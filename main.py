@@ -35,9 +35,9 @@ class Search(metaclass=ABCMeta):
     def get_report(self, args_list, start):
         pass
 
-    @abstractmethod
-    def bs_paser(self):
-        pass
+    def bs_paser(self) -> None:
+        assert self.report, "Don't get report"
+        self.bs4 = BeautifulSoup(self.report, 'html.parser')
 
     @abstractmethod
     def find_word(self):
@@ -51,13 +51,11 @@ class Search(metaclass=ABCMeta):
     def __next__(self):
         pass
 
-    @abstractmethod
     def output_word(self):
-        pass
+        return self.word_list
 
-    @abstractmethod
     def return_page(self):
-        pass
+        return self.page_num
 
 
 class BingWeb(Search):
@@ -75,15 +73,11 @@ class BingWeb(Search):
             self.page_num = 0
 
         if self.referer:
-            self.headers["referer"] = "self.referer"
+            self.headers["referer"] = self.referer
         self.referer = self.url + self.args
         self.report = self.bd_session.get(self.referer, headers=self.headers).text
         self.bs_paser()
         return self
-
-    def bs_paser(self) -> None:
-        assert self.report, "Don't get report"
-        self.bs4 = BeautifulSoup(self.report, 'html.parser')
 
     def find_word(self) -> None:
         self.word_list = []
@@ -146,21 +140,102 @@ class BingWeb(Search):
             self.report = self.get_report(None, False)
         else:
             raise StopIteration
-
         return True
 
-    def output_word(self):
-        return self.word_list
 
-    def return_page(self):
-        return self.page_num
+class BaiduWeb(Search):
+    def __init__(self):
+        super().__init__()
+        self.url = "https://www.baidu.com"
+        self.headers["Origin"] = "https://www.baidu.com"
+        self.headers['host'] = 'www.baidu.com'
+
+    def get_report(self, args_list=None, start=True):
+        if args_list:
+            self.args = "/s?" + "wd=" + args_list
+
+        if start:
+            self.page_num = 0
+
+        if self.referer:
+            self.headers["referer"] = self.referer
+        self.referer = self.url + self.args
+        self.report = self.bd_session.get(self.referer, headers=self.headers).text
+        self.bs_paser()
+        return self
+
+    def find_word(self) -> None:
+        self.word_list = []
+
+        # 百度特色搜索
+        word = self.bs4.find_all("div", class_="result-op c-container xpath-log", tpl="bk_polysemy")  # 百度百科
+        for w in word:
+            try:  # 错误捕捉
+                self.append_word_list("[百度百科]" + str(w.h3.a.text).replace("\n", ""), w.h3.a.get("href"))
+            except AttributeError:
+                pass
+
+        word = self.bs4.find_all("div", class_="result c-container")
+        for w in word:
+            try:  # 错误捕捉
+                self.append_word_list(w.h3.a.text, w.h3.a.get("href"))
+            except AttributeError:
+                pass
+
+        word = self.bs4.find_all("div", class_="result-op c-container")  # 特殊词条
+        for w in word:
+            # c-result-content
+            try:  # 错误捕捉
+                title = w.find("div", class_="c-result-content").find("section")  # 特殊词条
+                self.append_word_list(title.a.h3.span.text, title.a.get("href"))
+            except AttributeError:
+                pass
+
+    def append_word_list(self, title, url):  # 过滤重复并且压入url_list
+        # try:
+        #     new_url = requests.get(url, headers=self.headers, timeout=5)
+        #     print(new_url.status_code)  # 打印响应的状态码
+        #     url = new_url.url
+        #     print(url)
+        # except:
+        #     pass
+        if not self.url_dict.get(url, None):
+            self.url_dict[url] = title
+            self.word_list.append((title, url))
+
+    def __iter__(self):
+        self.page_num = -1
+        return self
+
+    def __next__(self) -> bool:
+        if self.page_num == -1:  # 默认的第一次get
+            self.page_num += 1
+            return True
+
+        self.page_num += 1
+        page = self.bs4.find("div", id="page")
+        if not page:
+            raise StopIteration
+
+        next_page_list = self.bs4.find_all("a", class_=f"n")
+        if next_page_list:
+            next_page = next_page_list[-1]
+            if not str(next_page.text).startswith("下一页"):
+                raise StopIteration
+            self.args = next_page.get("href")
+            self.report = self.get_report(None, False)
+        else:
+            raise StopIteration
+        return True
 
 
 class Seacher:  # 搜索者
     def __init__(self, word: str):
-        self.web = {"bing": BingWeb()}
+        self.web = {"bing": BingWeb(), "baidu": BaiduWeb()}
         self.word = word
         self.first = True
+        self.old_return_str = ""
+        self.web_name_dict = {}  # 同名网站处理
 
     def find(self):
         for web_name in self.web:
@@ -193,20 +268,17 @@ class Seacher:  # 搜索者
                 get: list = web.output_word()
                 return_str += "\n" + "* " * 20 + f"\n{web.return_page()}: [{web_name}] for {self.word} >>>\n"
                 for i in get:
-                    return_str += f"{i[0]}\n        -> {i[1]}\n"
+                    if self.web_name_dict.get(i[0], None):
+                        return_str += f"[曾经出现过 {self.web_name_dict[i[0]]}] {i[0]}\n{' ' * 8}-> {i[1]}\n"
+                    else:
+                        return_str += f"{i[0]}\n{' ' * 8}-> {i[1]}\n"
+                        self.web_name_dict[i[0]] = f"{web_name}, page: {web.return_page()}"
                 return_str += "* " * 20 + "\n"
+        self.old_return_str = return_str
         return return_str
 
     def out_again(self):  # 再输出一次
-        return_str = ""
-        for web_name in self.web:
-            web = self.web[web_name]
-            get: list = web.output_word()
-            return_str += "\n" + "* " * 20 + f"\n{web.return_page()}: [{web_name}] for {self.word} >>>\n"
-            for i in get:
-                return_str += f"{i[0]}\n{' ' * 8}-> {i[1]}\n"
-            return_str += "* " * 20 + "\n"
-        return return_str
+        return self.old_return_str
 
     @staticmethod
     def is_next():
