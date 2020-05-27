@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 import requests
 from bs4 import BeautifulSoup
 import time
-
+import webbrowser
 
 class Search(metaclass=ABCMeta):
     def __init__(self):
@@ -236,6 +236,7 @@ class Seacher:  # 搜索者
         self.first = True
         self.old_return_str = ""
         self.web_name_dict = {}  # 同名网站处理
+        self.url_list = []
 
     def find(self):
         for web_name in self.web:
@@ -269,16 +270,26 @@ class Seacher:  # 搜索者
                 return_str += "\n" + "* " * 20 + f"\n{web.return_page()}: [{web_name}] for {self.word} >>>\n"
                 for i in get:
                     if self.web_name_dict.get(i[0], None):
-                        return_str += f"[曾经出现过 {self.web_name_dict[i[0]]}] {i[0]}\n{' ' * 8}-> {i[1]}\n"
+                        return_str += f"[{len(self.url_list)}][曾经出现过 {self.web_name_dict[i[0]]}] {i[0]}\n{' ' * 8}-> {i[1]}\n"
+                        self.url_list.append(i[1])
                     else:
-                        return_str += f"{i[0]}\n{' ' * 8}-> {i[1]}\n"
-                        self.web_name_dict[i[0]] = f"{web_name}, page: {web.return_page()}"
+                        return_str += f"[{len(self.url_list)}]{i[0]}\n{' ' * 8}-> {i[1]}\n"
+                        self.web_name_dict[i[0]] = f"{web_name}, page: {web.return_page()}, [{len(self.url_list)}]"
+                        self.url_list.append(i[1])
                 return_str += "* " * 20 + "\n"
         self.old_return_str = return_str
         return return_str
 
     def out_again(self):  # 再输出一次
         return self.old_return_str
+
+    def open_url(self, num) -> None:  # 再输出一次
+        try:
+            url = self.url_list[num]
+        except IndexError:  # 太大了
+            return None
+        webbrowser.open_new_tab(url)
+        time.sleep(3)
 
     @staticmethod
     def is_next():
@@ -288,6 +299,7 @@ class Seacher:  # 搜索者
 class Menu:
     def __init__(self):
         self.searcher_dict = {}
+        self.searcher_dict_old = {}
         print("Welcome To SSearch!")
 
     def menu(self) -> None:
@@ -296,13 +308,18 @@ class Menu:
                 if not self.__menu():
                     break
             except KeyboardInterrupt:
-                print("Please Enter 'quiz' or 'q' to quiz")
+                print("\n")
             except BaseException as e:
                 print(f"There are some Error:\n{e}\n")
 
     def __menu(self):  # 注: self是有作用的(exec)
-        command = input("[SSearch] > ")  # 输入一条指令
-        if command == "q" or command == "quiz":
+        try:
+            command = input(f'[\033[4mSSearch\033[0m] > ')  # 输入一条指令
+        except KeyboardInterrupt:
+            print("\nPlease Enter 'quit' or 'q' to quit")
+            raise
+
+        if command == "q" or command == "quit":
             print("SSearch: Bye Bye!")
             return False  # 结束
         try:
@@ -329,6 +346,22 @@ class Menu:
         else:
             print(seacher_iter.out_again())
 
+    def func_open(self):
+        name = input(f"输入名字:")
+        try:
+            num = int(input("输入代号:"))
+        except ValueError:
+            print("请输入数字代号")
+            return
+        seacher_iter = self.searcher_dict.get(name, None)
+        seacher_iter_old = self.searcher_dict_old.get(name, None)
+        if seacher_iter:
+            seacher_iter.open_url(num)
+        elif seacher_iter_old:
+            seacher_iter_old.open_url(num)
+        else:
+            print("没有找到对应搜索器或搜索器已经搜索结束")
+
     def func_next(self, name=None, first=False):
         if not name:
             name = input(f"输入名字:")
@@ -346,6 +379,7 @@ class Menu:
                 seacher_iter.__next__()  # 储备输出
             except StopIteration:
                 self.func_again(name)  # 输出最后的结果
+                self.searcher_dict_old[name] = self.searcher_dict[name]
                 del self.searcher_dict[name]  # 删除输出
                 print(f"{name}: [搜索结束]")
             except AttributeError as e:
