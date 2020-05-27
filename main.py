@@ -308,7 +308,7 @@ class Menu:
                 if not self.__menu():
                     break
             except KeyboardInterrupt:
-                print("\n")
+                print("\n", end="")
             except BaseException as e:
                 print(f"There are some Error:\n{e}\n")
 
@@ -317,7 +317,7 @@ class Menu:
             command = input(f'[\033[4mSSearch\033[0m] > ')  # 输入一条指令
         except KeyboardInterrupt:
             print("\nPlease Enter 'quit' or 'q' to quit")
-            raise
+            return True
 
         if command == "q" or command == "quit":
             print("SSearch: Bye Bye!")
