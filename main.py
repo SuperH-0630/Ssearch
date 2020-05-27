@@ -12,6 +12,7 @@ class Search(metaclass=ABCMeta):
         self.report = None
         self.bs4: BeautifulSoup = None
         self.word_list = []
+        self.url_dict = {}
         self.page_num = 0
         self.referer = ""
         self.headers = {
@@ -92,11 +93,16 @@ class BingWeb(Search):
             title = w.find("div", class_="b_title")
             try:  # 错误捕捉
                 if title:  # 找到了title(官网模式)
-                    self.word_list.append((title.h2.a.text, title.h2.a.get("href")))
+                    self.append_word_list(title.h2.a.text, title.h2.a.get("href"))
                 else:  # 普通词条模式
-                    self.word_list.append((w.h2.a.text, w.h2.a.get("href")))
+                    self.append_word_list(w.h2.a.text, w.h2.a.get("href"))
             except AttributeError:
                 pass
+
+    def append_word_list(self, title, url):  # 过滤重复并且压入url_list
+        if not self.url_dict.get(url, None):
+            self.url_dict[url] = title
+            self.word_list.append((title, url))
 
     def __iter__(self):
         self.page_num = -1
@@ -192,14 +198,15 @@ class Menu:
                 if not self.__menu():
                     break
             except KeyboardInterrupt:
-                print("Please Enter 'q' to quiz")
+                print("Please Enter 'quiz' or 'q' to quiz")
             except BaseException as e:
-                print(f"There are some Error:\n{e}\n\n")
+                print(f"There are some Error:\n{e}\n")
 
     def __menu(self):
         command = input("[SSearch] > ")  # 输入一条指令
-        if(command == "q"):
-            return False
+        if command == "q" or command == "quiz":
+            print("SSearch: Bye Bye!")
+            return False  # 结束
         try:
             exec(f"self.func_{command}()")
         except AttributeError:
@@ -213,28 +220,40 @@ class Menu:
             name = word
         self.searcher_dict[name] = Seacher(word)  # 制造一个搜索器
         self.searcher_dict[name].find().__iter__()  # 迭代准备
+        self.func_next(name, True)
 
-    def func_again(self):
-        name = input(f"输入名字:")
+    def func_again(self, name=None):
+        if not name:
+            name = input(f"输入名字:")
         seacher_iter = self.searcher_dict.get(name, None)
         if not seacher_iter:
             print("没有找到对应搜索器或搜索器已经搜索结束")
         else:
             print(seacher_iter.out_again())
 
-    def func_next(self):
-        name = input("输入名字:")
+    def func_next(self, name=None, first=False):
+        if not name:
+            name = input(f"输入名字:")
+        if not first:
+            self.func_again(name)
+
         seacher_iter = self.searcher_dict.get(name, None)
         if not seacher_iter:
             print("没有找到对应搜索器或搜索器已经搜索结束")
         else:
             try:
-                print(seacher_iter.__next__())
+                if first:  # make的时候需要输出
+                    out = seacher_iter.__next__()
+                    print(out)
+                seacher_iter.__next__()  # 储备输出
             except StopIteration:
-                print("搜索结束")
+                self.func_again(name)  # 输出最后的结果
+                del self.searcher_dict[name]  # 删除输出
+                print(f"{name}: [搜索结束]")
             except AttributeError as e:
-                print(f"There are some Error:\n{e}\n\n")
+                print(f"There are some Error:\n{e}\n")
 
 
-menu = Menu()
-menu.menu()
+if __name__ == "__main__":
+    menu = Menu()
+    menu.menu()
