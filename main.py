@@ -88,7 +88,33 @@ class BingWeb(Search):
     def find_word(self) -> None:
         self.word_list = []
 
-        word = self.bs4.find_all("li", class_="b_algo")
+        # bing 特色搜索
+        word = self.bs4.find_all("li", class_="b_ans")  # bing 词典(dict_oa), bing 视频(vsa)
+        for w in word:
+            dict_oa = w.find("div", class_="dict_oa")
+            vsa = w.find("div", class_="vsa")  # bing 视频
+            try:  # 错误捕捉
+                if dict_oa:  # 找到了dict_oa，是词典模式
+                    self.append_word_list("[bing词典]" + dict_oa.div.div.h2.a.text,
+                                          self.url + dict_oa.div.div.h2.a.get("href"))
+                elif vsa:  # 视频模式
+                    self.append_word_list("[bing视频]" + vsa.h2.a.text,
+                                          self.url + vsa.h2.a.get("href"))
+                    pass
+            except AttributeError:
+                pass
+
+        word = self.bs4.find_all("li", class_="b_ans b_mop b_imgans b_imgsmall")  # bing 图片
+        for w in word:
+            irphead = w.find("div", class_="irphead")
+            try:  # 错误捕捉
+                if irphead:  # 找到了dict_oa，是词典模式
+                    self.append_word_list("[bing图片]" + irphead.h2.a.text,
+                                          self.url + irphead.h2.a.get("href"))
+            except AttributeError:
+                pass
+
+        word = self.bs4.find_all("li", class_="b_algo")  # b_algo是普通词条或者官网(通过b_title鉴别)
         for w in word:
             title = w.find("div", class_="b_title")
             try:  # 错误捕捉
@@ -202,7 +228,7 @@ class Menu:
             except BaseException as e:
                 print(f"There are some Error:\n{e}\n")
 
-    def __menu(self):
+    def __menu(self):  # 注: self是有作用的(exec)
         command = input("[SSearch] > ")  # 输入一条指令
         if command == "q" or command == "quiz":
             print("SSearch: Bye Bye!")
